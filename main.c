@@ -1,67 +1,193 @@
-/* --COPYRIGHT--,BSD_EX
- * Copyright (c) 2018, Texas Instruments Incorporated
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * *  Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * *  Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * *  Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * --/COPYRIGHT--*/
-//******************************************************************************
-//  MSP430G2xx3 Demo - Software Toggle P1.0
-//
-//  Description; Toggle P1.0 by xor'ing P1.0 inside of a software loop.
-//  ACLK = n/a, MCLK = SMCLK = default DCO
-//
-//                MSP430G2xx3
-//             -----------------
-//         /|\|              XIN|-
-//          | |                 |
-//          --|RST          XOUT|-
-//            |                 |
-//            |             P1.0|-->LED
-//
-//  E. Chen
-//  Texas Instruments, Inc
-//  May 2018
-//  Built with CCS Version 8.0 and IAR Embedded Workbench Version: 7.11
-//******************************************************************************
+/*
+Name: Dom
+ */
 
 #include <msp430.h>
+#include <stdlib.h>
+
+volatile unsigned char last_button = 0;
+
+#define MAX_SEQUENCE 10
+unsigned char sequence[MAX_SEQUENCE];
+unsigned char sequence_length = 0;
+unsigned char player_step = 0;
+
+
 
 int main(void)
 {
     volatile unsigned int i;
     WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
-    P1DIR |= 0x01;                            // Set P1.0 to output direction
+
+    /*setting up the LEDS for the Simon game*/
+    P2DIR |= (BIT0 | BIT1 | BIT2 | BIT3);
+    P2OUT &= ~(BIT0 | BIT1 | BIT2 | BIT3);
+    P1DIR |= (BIT0 | BIT6);
+    P1OUT &= ~(BIT0 | BIT6);
+
+    add_random_step();
+    play_sequence();
+
+    /*Setting up the buttons for the simon game*/
+    P1DIR &= ~(BIT1 | BIT2 | BIT4 | BIT5);
+    P1OUT |= (BIT1 | BIT2 | BIT4 | BIT5);
+    P1REN |= (BIT1 | BIT2 | BIT4 | BIT5);
+
+
+  TA0CTL = TASSEL_2 | MC_2 | TACLR;
+    srand(TA0R);
+
+    /*Enabling the interrupts for the buttons*/
+    P1IE |= (BIT1 | BIT2 | BIT4 | BIT5);
+    P1IES |= (BIT1 | BIT2 | BIT4 | BIT5);
+    P1IFG &= ~(BIT1 | BIT2 | BIT4 | BIT5);
+
+
+    __bis_SR_register(GIE);
 
     while(1)
     {
-        P1OUT ^= 0x01;                        // Toggle P1.0 using exclusive-OR
+      
+      check_player_input();
 
-        for (i=10000; i>0; i--);
   }
+}
+
+#pragma vector=PORT1_VECTOR
+__interrupt void P1_ISR(void) {
+
+  unsigned char flags = P1IFG & (BIT1 | BIT2 | BIT4 | BIT5);
+
+  switch(flags) {
+
+    case BIT1:
+    last_button = BIT1;
+    break;
+
+    case BIT2:
+    last_button = BIT2;
+    break;
+
+    case BIT4:
+    last_button = BIT4;
+    break;
+
+    case BIT5:
+    last_button = BIT5;
+    break;
+
+    default:
+    break;
+
+  }
+
+  P1IFG &= ~(BIT1 | BIT2 | BIT4 | BIT5);
+
+}
+
+void check_player_input() {
+
+  if(last_button == 0) return;
+
+  unsigned char pressed;
+  switch(last_button) {
+    case BIT1:
+    pressed = 0;
+    break;
+
+    case BIT2:
+    pressed = 1;
+    break;
+
+    case BIT4:
+    pressed = 2;
+    break;
+
+    case BIT5:
+    pressed = 3;
+    break;
+
+    default:
+    return;
+  }
+
+  if(pressed == sequence[player_step]) {
+    player_step++;
+  
+
+  if(player_step == sequence_length) {
+    flash_board_led(BIT0);
+    player_step = 0;
+    add_random_step();
+    play_sequence();
+  }
+
+  } else {
+
+    sequence_length = 0;
+    flash_board_led(BIT6);
+    player_step = 0;
+    add_random_step();
+    play_sequence();
+
+  }
+
+  last_button = 0;
+
+}
+
+void play_sequence() {
+  unsigned char i;
+  for(i = 0; i < sequence_length; i++) {
+    flash_led(sequence[i]);
+  }
+
+}
+
+void add_random_step(){
+
+if(sequence_length < MAX_SEQUENCE) {
+  sequence[sequence_length] = rand() % 4;
+  sequence_length++;
+
+}
+
+}
+
+void flash_led(unsigned char led) {
+
+switch(led) {
+
+case 0:
+P2OUT |= BIT0;
+break;
+
+case 1:
+P2OUT |= BIT1;
+break;
+
+case 2:
+P2OUT |= BIT2;
+break;
+
+case 3:
+P2OUT |= BIT3;
+break;
+
+}
+
+__delay_cycles(300000);
+
+P2OUT &= ~(BIT0 | BIT1 | BIT2 | BIT3);
+
+__delay_cycles(100000);
+
+
+}
+
+void flash_board_led(unsigned char led) {
+  P1OUT |= led;
+  __delay_cycles(500000);
+  P1OUT &= ~led;
+  __delay_cycles(200000);
 }
