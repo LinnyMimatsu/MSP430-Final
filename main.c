@@ -1,5 +1,6 @@
 /*
 Name: Dom
+Description: Pocket Simon using theory learned in class for the MSP-EXP430G2ET microcontroller
  */
 
 #include <msp430.h>
@@ -7,6 +8,7 @@ Name: Dom
 
 volatile unsigned char last_button = 0;
 
+/*Hard coded length of the game, can be reduced or lengthened*/
 #define MAX_SEQUENCE 10
 unsigned char sequence[MAX_SEQUENCE];
 unsigned char sequence_length = 0;
@@ -17,7 +19,7 @@ unsigned char player_step = 0;
 int main(void)
 {
     volatile unsigned int i;
-    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
+    WDTCTL = WDTPW + WDTHOLD;  // Stop watchdog timer
 
     /*setting up the LEDS for the Simon game*/
     P2DIR |= (BIT0 | BIT1 | BIT2 | BIT3);
@@ -33,8 +35,8 @@ int main(void)
     P1OUT |= (BIT1 | BIT2 | BIT4 | BIT5);
     P1REN |= (BIT1 | BIT2 | BIT4 | BIT5);
 
-
-  TA0CTL = TASSEL_2 | MC_2 | TACLR;
+    /*timer so the sequence is random everytime the user restarts or the code is ran*/
+    TA0CTL = TASSEL_2 | MC_2 | TACLR;
     srand(TA0R);
 
     /*Enabling the interrupts for the buttons*/
@@ -53,6 +55,7 @@ int main(void)
   }
 }
 
+/*interrupt reading the button presses by the user*/
 #pragma vector=PORT1_VECTOR
 __interrupt void P1_ISR(void) {
 
@@ -81,10 +84,12 @@ __interrupt void P1_ISR(void) {
 
   }
 
+  /*clear interrupt*/
   P1IFG &= ~(BIT1 | BIT2 | BIT4 | BIT5);
 
 }
 
+/*checks inputs to leds*/
 void check_player_input() {
 
   if(last_button == 0) return;
@@ -111,6 +116,7 @@ void check_player_input() {
     return;
   }
 
+  // if user input equals sequence continue
   if(pressed == sequence[player_step]) {
     player_step++;
   
@@ -122,6 +128,8 @@ void check_player_input() {
     play_sequence();
   }
 
+
+  // if user messes up restart
   } else {
 
     sequence_length = 0;
@@ -136,14 +144,8 @@ void check_player_input() {
 
 }
 
-void play_sequence() {
-  unsigned char i;
-  for(i = 0; i < sequence_length; i++) {
-    flash_led(sequence[i]);
-  }
-
-}
-
+/*if the user gets the sequence right add to it
+but dont go above specificed maximum*/
 void add_random_step(){
 
 if(sequence_length < MAX_SEQUENCE) {
@@ -154,6 +156,16 @@ if(sequence_length < MAX_SEQUENCE) {
 
 }
 
+/*function to flash the leds in sequence*/
+void play_sequence() {
+  unsigned char i;
+  for(i = 0; i < sequence_length; i++) {
+    flash_led(sequence[i]);
+  }
+
+}
+
+/*function that actually does the flashing*/
 void flash_led(unsigned char led) {
 
 switch(led) {
@@ -176,6 +188,8 @@ break;
 
 }
 
+/*delays so the user can see the led flashes
+and then turn off the leds*/
 __delay_cycles(300000);
 
 P2OUT &= ~(BIT0 | BIT1 | BIT2 | BIT3);
@@ -185,6 +199,8 @@ __delay_cycles(100000);
 
 }
 
+/*if the user gets the sequence right flash green, if not
+flash red on the board*/
 void flash_board_led(unsigned char led) {
   P1OUT |= led;
   __delay_cycles(500000);
